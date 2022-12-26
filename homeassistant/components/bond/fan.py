@@ -52,10 +52,20 @@ async def async_setup_entry(
         "async_set_speed_belief",
     )
 
-    async_add_entities(
+    fans: list[Entity] = [
         BondFan(hub, device, bpup_subs)
         for device in hub.devices
         if DeviceType.is_fan(device.type)
+    ]
+
+    fp_fans: list[Entity] = [
+        BondFireplaceFan(hub, device, bpup_subs)
+        for device in hub.devices
+        if DeviceType.is_fireplace(device.type) and device.supports_fp_fan()
+    ]
+
+    async_add_entities(
+        fans + fp_fans
     )
 
 
@@ -220,3 +230,85 @@ class BondFan(BondEntity, FanEntity):
         await self._hub.bond.action(
             self._device.device_id, Action.set_direction(bond_direction)
         )
+
+class BondFireplaceFan(BondEntity, FanEntity):
+    """Representation of a Bond-controlled fireplace fan."""
+
+    def __init__(
+        self, hub: BondHub, device: BondDevice, bpup_subs: BPUPSubscriptions
+    ) -> None:
+        """Create HA entity representing Bond fireplace fan."""
+        self._power: bool | None = None
+        self._speed: int | None = None
+        super().__init__(hub, device, bpup_subs)
+
+    def _apply_state(self) -> None:
+        state = self._device.state
+        self._power = state.get("power")
+        self._speed = state.get("speed")
+
+    @property
+    def supported_features(self) -> FanEntityFeature:
+        """Flag supported features."""
+        features = FanEntityFeature(0)
+        if self._device.supports_set_fp_fan():
+            features |= FanEntityFeature.SET_SPEED
+
+        return features
+
+    @property
+    def _speed_range(self) -> tuple[int, int]:
+        """Return the range of speeds."""
+        return (1, self._device.props.get("max_speed", 3))
+
+    @property
+    def percentage(self) -> int:
+        """Return the current speed percentage for the fireplace fan."""
+        if not self._speed or not self._power:
+            return 0
+        return min(
+            100, max(0, ranged_value_to_percentage(self._speed_range, self._speed))
+        )
+
+    @property
+    def speed_count(self) -> int:
+        """Return the number of speeds the fireplace fan supports."""
+        return int_states_in_range(self._speed_range)
+
+    async def async_set_percentage(self, percentage: int) -> None:
+        """Set the desired speed for the fireplace fan."""
+        _LOGGER.debug("async_set_percentage called with percentage %s", percentage)
+
+        if percentage == 0:
+            await self.async_turn_off()
+            return
+
+        bond_speed = math.ceil(
+            percentage_to_ranged_value(self._speed_range, percentage)
+        )
+        _LOGGER.debug(
+            "async_set_percentage converted percentage %s to bond speed %s",
+            percentage,
+            bond_speed,
+        )
+
+        await self._hub.bond.action(
+            self._device.device_id, Action(Action.SET_FP_FAN, bond_speed)
+        )
+
+    async def async_turn_on(
+        self,
+        percentage: int | None = None,
+        **kwargs: Any,
+    ) -> None:
+        """Turn on the fireplace fan."""
+        _LOGGER.debug("Fan async_turn_on called with percentage %s", percentage)
+
+        if percentage is not None:
+            await self.async_set_percentage(percentage)
+        else:
+            await self._hub.bond.action(self._device.device_id, Action(Action.TURN_FP_FAN_ON))
+
+    async def async_turn_off(self, **kwargs: Any) -> None:
+        """Turn the fireplace fan off."""
+        await self._hub.bond.action(self._device.device_id, Action(Action.TURN_FP_FAN_OFF))

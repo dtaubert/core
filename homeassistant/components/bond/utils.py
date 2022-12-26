@@ -130,6 +130,18 @@ class BondDevice:
         """Return True if this device supports setting a light brightness."""
         return self._has_any_action({Action.SET_BRIGHTNESS})
 
+    def supports_set_flame(self) -> bool:
+        """Return True if this device supports setting the fireplace flame."""
+        return self._has_any_action({Action.SET_FLAME})
+
+    def supports_fp_fan(self) -> bool:
+        """Return True if this device supports any of the fireplace fan related commands."""
+        return self._has_any_action({Action.TURN_FP_FAN_ON, Action.TURN_FP_FAN_OFF})
+
+    def supports_set_fp_fan(self) -> bool:
+        """Return True if this device supports setting the fireplace fan speed."""
+        return self._has_any_action({Action.SET_FP_FAN})
+
 
 class BondHub:
     """Hub device representing Bond Bridge."""

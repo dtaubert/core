@@ -271,8 +271,18 @@ class BondUpLight(BondBaseLight, BondEntity, LightEntity):
 class BondFireplace(BondEntity, LightEntity):
     """Representation of a Bond-controlled fireplace."""
 
-    _attr_color_mode = ColorMode.BRIGHTNESS
-    _attr_supported_color_modes = {ColorMode.BRIGHTNESS}
+    def __init__(
+        self,
+        hub: BondHub,
+        device: BondDevice,
+        bpup_subs: BPUPSubscriptions,
+        sub_device: str | None = None,
+    ) -> None:
+        """Create HA entity representing Bond fireplace."""
+        super().__init__(hub, device, bpup_subs, sub_device)
+        if device.supports_set_flame():
+            self._attr_color_mode = ColorMode.BRIGHTNESS
+            self._attr_supported_color_modes = {ColorMode.BRIGHTNESS}
 
     def _apply_state(self) -> None:
         state = self._device.state
