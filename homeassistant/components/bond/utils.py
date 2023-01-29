@@ -25,6 +25,7 @@ class BondDevice:
         attrs: dict[str, Any],
         props: dict[str, Any],
         state: dict[str, Any],
+        cmds: list[dict[str, Any]],
     ) -> None:
         """Create a helper device from ID and attributes returned by API."""
         self.device_id = device_id
@@ -32,6 +33,7 @@ class BondDevice:
         self.state = state
         self._attrs = attrs or {}
         self._supported_actions: set[str] = set(self._attrs.get("actions", []))
+        self._cmds = cmds or []
 
     def __repr__(self) -> str:
         """Return readable representation of a bond device."""
@@ -39,6 +41,7 @@ class BondDevice:
             "device_id": self.device_id,
             "props": self.props,
             "attrs": self._attrs,
+            "cmds": self._cmds,
             "state": self.state,
         }.__repr__()
 
@@ -142,6 +145,10 @@ class BondDevice:
         """Return True if this device supports setting the fireplace fan speed."""
         return self._has_any_action({Action.SET_FP_FAN})
 
+    def find_commands(self, action: str) -> list[dict[str, Any]]:
+        """Returns list of commands matching action"""
+        return [cmd for cmd in self._cmds if cmd["action"] == action]
+
 
 class BondHub:
     """Hub device representing Bond Bridge."""
@@ -153,6 +160,24 @@ class BondHub:
         self._bridge: dict[str, Any] = {}
         self._version: dict[str, Any] = {}
         self._devices: list[BondDevice] = []
+
+    async def bond_device_commands(self, device_id: str) -> list[str]:
+        """Return the list of available command IDs reported by API."""
+        json = await self.bond._Bond__get(f"/v2/devices/{device_id}/commands")
+        return [
+            key for key in json if not key.startswith("_") and type(json[key]) is dict
+        ]
+
+    async def bond_device_command(self, device_id: str, command_id: str) -> dict:
+        """Return device command reported by API."""
+        return await self.bond._Bond__get(
+            f"/v2/devices/{device_id}/commands/{command_id}"
+        )
+
+    async def bond_device_command_list(self, device_id: str) -> list[dict[str, Any]]:
+        """Return the list of available commands reported by API."""
+        cmds = await self.bond_device_commands(device_id)
+        return [await self.bond_device_command(device_id, key) for key in cmds]
 
     async def setup(self, max_devices: int | None = None) -> None:
         """Read hub version information."""
@@ -172,6 +197,7 @@ class BondHub:
                     self.bond.device(device_id),
                     self.bond.device_properties(device_id),
                     self.bond.device_state(device_id),
+                    self.bond_device_command_list(device_id),
                 ]
             )
 
@@ -184,9 +210,10 @@ class BondHub:
                     responses[response_idx],
                     responses[response_idx + 1],
                     responses[response_idx + 2],
+                    responses[response_idx + 3],
                 )
             )
-            response_idx += 3
+            response_idx += 4
 
         _LOGGER.debug("Discovered Bond devices: %s", self._devices)
         try:

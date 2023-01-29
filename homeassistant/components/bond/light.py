@@ -50,7 +50,6 @@ async def async_setup_entry(
     bpup_subs = data.bpup_subs
     platform = entity_platform.async_get_current_platform()
 
-    platform = entity_platform.async_get_current_platform()
     for service in ENTITY_SERVICES:
         platform.async_register_entity_service(
             service,
@@ -287,10 +286,11 @@ class BondFireplace(BondEntity, LightEntity):
     def _apply_state(self) -> None:
         state = self._device.state
         power = state.get("power")
-        flame = state.get("flame")
         self._attr_is_on = power == 1
-        self._attr_brightness = round(flame * 255 / 100) if flame else None
         self._attr_icon = "mdi:fireplace" if power == 1 else "mdi:fireplace-off"
+        if self._device.supports_set_flame():
+            flame = state.get("flame")
+            self._attr_brightness = round(flame * 255 / 100) if flame else None
 
     async def async_turn_on(self, **kwargs: Any) -> None:
         """Turn the fireplace on."""
